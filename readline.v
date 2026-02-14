@@ -1,5 +1,7 @@
 module vircc
 
+import kutlayozger.chalk
+
 pub fn (mut irc_conn IrcConn) readline() !string {
   // Read a single line from the TCP connection
   raw_line := irc_conn.tcp.read_line()
@@ -46,25 +48,25 @@ pub fn (mut irc_conn IrcConn) readline() !string {
   if command == "PRIVMSG" && params.len > 0 {
     target := params[0]
     sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-    output = "<${sender}:${target}> ${trailing}"
+    output = chalk.green("<${sender}:${target}> ${trailing}")
   } else if command == "NOTICE" && params.len > 0 {
     _ := params[0]
     sender := if prefix.len > 0 { prefix } else { "server" }
-    output = "-${sender}- ${trailing}"
+    output = chalk.light_red("-${sender}- ${trailing}")
   } else if command in ["JOIN", "PART", "QUIT"] {
     user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
     ch := if params.len > 0 { params[0] } else { trailing }
-    output = "${user} ${command} ${ch}"
+    output = chalk.dark_gray("${user} ${command} ${ch}")
   } else if command.len == 3 && command[0].is_digit() {
     // numeric replies
-    output = "-${command}- ${trailing}"
+    output = chalk.dark_gray("-${command}- ${trailing}")
   } else if command == "PING" {
     irc_conn.tcp.write("PONG :${trailing}".bytes())!
-    output = "Server pinged us, responding with: PONG :${trailing}"
+    output = chalk.blue("Server pinged us, responding with: PONG :${trailing}")
   } else if command == "PONG" {
   } else {
     // fallback
-    output = "${line}"
+    output = chalk.red("${line}")
   }
 
   return output
