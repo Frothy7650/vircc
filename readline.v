@@ -59,9 +59,8 @@ pub fn (mut irc_conn IrcConn) readline() !string {
     // numeric replies
     output = "-${command}- ${trailing}"
   } else if command == "PING" {
-    output = "*PING* ${trailing}"
+    irc_conn.tcp.write("PONG :${trailing}".bytes())!
   } else if command == "PONG" {
-    output = "*PONG* ${trailing}"
   } else {
     // fallback
     output = "${line}"
