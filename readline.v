@@ -116,7 +116,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
         "353" {
           names := trailing.split_by_space()
           mut ret := ""
-          for name in names { ret += "[${name}]" }
+          for name in names { ret += "[${name}] " }
           return "Users: ${ret}"
         }
         
