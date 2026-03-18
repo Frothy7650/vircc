@@ -39,6 +39,7 @@ pub mut:
   tcp         net.TcpConn
   nick        string
   channel     string
+  command     string
   is_running  bool
   color       bool
 }
