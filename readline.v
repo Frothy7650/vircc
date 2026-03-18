@@ -46,7 +46,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
     nick = nick[..i]
   }
 
-  cnick := if nick.len > 0 { chalk.cyan(nick) } else { "" }
+  cnick := if nick.len > 0 { if irc_conn.color { chalk.cyan(nick) } else { nick } } else { "" }
 
   // === WITH COLOR ===
   if irc_conn.color {
