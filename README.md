@@ -1,5 +1,5 @@
 ## VIRCC
-Simple IRC library.
+Simple IRC client library.
 
 ## Features
 ```
