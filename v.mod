@@ -4,6 +4,6 @@ Module {
 	version: '0.0.0'
 	license: 'MIT'
 	dependencies: [
-  "kutlayozger.chalk"
+  "Frothy7650.chalk"
   ]
 }
