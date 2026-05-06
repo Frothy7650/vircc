@@ -1,6 +1,6 @@
 module vircc
 
-import kutlayozger.chalk
+import frothy7650.chalk
 import regex.pcre
 
 pub fn (mut irc_conn IrcConn) readline() !string {
