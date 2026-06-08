@@ -1,6 +1,6 @@
 module vircc
 
-pub fn (mut irc_conn IrcConn) writeline(input string) ! {
+pub fn (mut irc_conn IrcConn) writeline(input string) !string {
 	// Commands start with /
 	if input.starts_with('/') {
 		parts := input[1..].split(' ') // remove leading /
@@ -112,10 +112,10 @@ pub fn (mut irc_conn IrcConn) writeline(input string) ! {
 				irc_conn.tcp.write('QUIT :${parts[1..].join(' ')}\r\n'.bytes())!
 				irc_conn.is_running = false
 				irc_conn.disconnect() or {}
-				return
+				return ''
 			}
 			else {
-				println('Unknown command or invalid syntax')
+				return 'Unknown command or invalid syntax'
 			}
 		}
 	} else {
@@ -125,4 +125,5 @@ pub fn (mut irc_conn IrcConn) writeline(input string) ! {
 			irc_conn.tcp.write('PRIVMSG ${irc_conn.channel} :${input}\r\n'.bytes())!
 		}
 	}
+  return ''
 }
