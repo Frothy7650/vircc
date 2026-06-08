@@ -20,7 +20,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
 	// 2 = command
 	// 3 = middle params (optional)
 	// 4 = trailing (optional)
-	regex_pattern := r'^(?::([^ ]+)\s+)?([A-Za-z]+|\d{3})(?:\s([^:]+))?(?:\s:(.*))?$'
+	regex_pattern := r'^(?::([^ ]+)\s+)?([A-Za-z]+|\d{3})(?:\s([^:]*?))?(?:\s*:(.*))?$'
 
 	r := pcre.new_regex(regex_pattern, 0) or { return error('regex compile failed') }
 
@@ -243,7 +243,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
 					return '[${command}] ${trailing}'
 				}
 				'251', '252', '253', '254', '255' {
-					return chalk.dim('[${command}] ${trailing}')
+					return if irc_conn.color { chalk.dim('[${command}] ${trailing}') } else { '[${command}] ${trailing}' }
 				}
 				'301', '305', '306', '311', '312', '313', '317', '318', '319' {
 					return '[${command}] ${trailing}'

@@ -29,7 +29,7 @@ pub fn (mut irc_conn IrcConn) login() ! {
 	// Write the username to the server
 	irc_conn.tcp.write('USER ${irc_conn.nick} 0 * :${irc_conn.nick} IRC Client\r\n'.bytes())!
 	$if debug {
-		println('USER ${irc_conn.nick} 0 * :${irc_conn.nick} IRC Client')
+		println('USER ${irc_conn.nick} 0 * :${irc_conn.nick}')
 	}
 }
 
