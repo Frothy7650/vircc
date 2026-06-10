@@ -1,278 +1,229 @@
 module vircc
 
-import frothy7650.chalk
-import regex.pcre
-
-pub fn (mut irc_conn IrcConn) readline() !string {
+pub fn (mut irc_conn IrcConn) readline() !IrcMsg {
 	raw_line := irc_conn.tcp.read_line()
 	line := raw_line.trim_space()
 	if line.len == 0 {
-		return ''
+		return IrcMsg{}
 	}
 
+  mut nick := ''
+  mut tags := map[string]string{}
 	mut prefix := ''
-	mut command := ''
-	mut target := ''
-	mut trailing := ''
+	mut command := Command{}
+  mut params := []string{}
 
-	// Regex:
-	// 1 = prefix (optional)
-	// 2 = command
-	// 3 = middle params (optional)
-	// 4 = trailing (optional)
-	regex_pattern := r'^(?::([^ ]+)\s+)?([A-Za-z]+|\d{3})(?:\s([^:]*?))?(?:\s*:(.*))?$'
+  mut message := IrcMsg{}
 
-	r := pcre.new_regex(regex_pattern, 0) or { return error('regex compile failed') }
+	if m := irc_conn.r.match_str(line, 0, 0) {
+    tags_str := m.get(1) or { '' }
+    prefix = m.get(2) or { '' }
+    command_str := m.get(3) or { '' }
+    params_str := m.get(4) or { '' }
+    trailing := m.get(5) or { '' }
 
-	if m := r.match_str(line, 0, 0) {
-		prefix = m.get(1) or { '' }
-		command = m.get(2) or { '' }
+    // Parse tags
+    if tags_str != '' {
+      for tag in tags_str.split(';') {
+        parts := tag.split_nth('=', 2)
 
-		middle := m.get(3) or { '' }
-		trailing = m.get(4) or { '' }
+        if parts.len == 2 {
+          tags[parts[0]] = parts[1]
+        } else {
+          tags[parts[0]] = ''
+        }
+      }
+    }
 
-		if middle.len > 0 {
-			parts := middle.split(' ')
-			if parts.len > 0 {
-				target = parts[0]
-			}
-		}
+    // Parse command
+    if command_str.len == 3 && command_str.bytes().all(it.is_digit()) {
+      command = command_str.int()
+    } else {
+      command = command_str
+    }
+
+    // Parse params
+    if params_str != '' {
+      params = params_str.split(' ')
+    }
+
+    // trailing is just final param
+    if trailing != '' {
+      params << trailing
+    }
+
+    // Extract nick from prefix
+    if prefix.contains('!') {
+      nick = prefix.split('!')[0]
+    } else {
+      nick = prefix
+    }
+
+    message = IrcMsg{
+      nick: nick
+      tags: tags
+      prefix: prefix
+      command: command
+      params: params
+      message: ''
+    }
+
+    if irc_conn.use_internal_formatting {
+      irc_conn.builtin_message_formatting(mut message)!
+    }
+
+    $if debug {
+      println(message)
+    }
+
+    return message
 	} else {
-		return ''
+		return error('failed to parse IRC message')
 	}
+}
 
-	// Extract nick from prefix
-	mut nick := prefix
-	if i := nick.index('!') {
-		nick = nick[..i]
-	}
+pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
+  trailing := if msg.params.len > 0 {
+    msg.params.last()
+  } else { 
+    ''
+  }
 
-	cnick := if nick.len > 0 {
-		if irc_conn.color { chalk.cyan(nick) } else { nick }
-	} else {
-		''
-	}
-
-	// === WITH COLOR ===
-	if irc_conn.color {
-		if !command.is_int() {
-			match command {
-				'NOTICE' {
-					if nick.len > 0 {
-						return chalk.underline('-${cnick}- ${trailing}')
-					}
-					return chalk.underline('${trailing}')
-				}
-				'PRIVMSG' {
-					if trailing.starts_with('\x01ACTION ') && trailing.ends_with('\x01') {
-						action_text := trailing[8..trailing.len - 1]
-						return '* ${chalk.bold(cnick)} ${action_text}'
-					}
-					return chalk.bold('<${cnick}> ${trailing}')
-				}
-				'PING' {
-					irc_conn.tcp.write('PONG ${trailing}'.bytes())!
-					return ''
-				}
-				'PONG' {
-					if trailing.len > 0 {
-						return '${trailing} responded to ping'
-					}
-				}
-				'JOIN' {
-					return '${cnick} has joined ${if trailing.len > 0 {
-						trailing
-					} else {
-						target
-					}}'
-				}
-				'PART' {
-					if trailing.len > 0 {
-						return '${cnick} has left ${target} (${trailing})'
-					}
-					return '${cnick} has left ${target}'
-				}
-				'QUIT' {
-					if trailing.len > 0 {
-						return '${cnick} has quit (${trailing})'
-					}
-					return '${cnick} has quit'
-				}
-				'NICK' {
-					newnick := if trailing.len > 0 { trailing } else { target }
-					return '${cnick} is now known as ${chalk.cyan(newnick)}'
-				}
-				'KICK' {
-					parts := line.split(' ')
-					if parts.len >= 4 {
-						victim := parts[3]
-						mut msg := '${cnick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(target)}'
-						if trailing.len > 0 {
-							msg += ' (${trailing})'
-						}
-						return msg
-					}
-				}
-				'MODE' {
-					return '${cnick} changed mode: ${trailing}'
-				}
-				'TOPIC' {
-					return '${cnick} set topic for ${target}: ${trailing}'
-				}
-				else {
-					return '-!- [${command}] ${trailing}'
-				}
-			}
-		} else if command.is_int() {
-			match command {
-				'001', '002', '003', '004', '005' {
-					return trailing
-				}
-				'200', '201', '202', '203', '204', '205', '206', '207', '208', '209' {
-					return chalk.dim('[${command}] ${trailing}')
-				}
-				'251', '252', '253', '254', '255' {
-					return chalk.dim('[${command}] ${trailing}')
-				}
-				'301', '305', '306', '311', '312', '313', '317', '318', '319' {
-					return chalk.dim('[${command}] ${trailing}')
-				}
-				'322', '323', '324', '331', '332', '341', '346', '347', '348', '349' {
-					return chalk.dim('[${command}] ${trailing}')
-				}
-				'353' {
-					names := trailing.split_by_space()
-					mut ret := ''
-					for name in names {
-						ret += '[${name}] '
-					}
-					return 'Users: ${ret}'
-				}
-				'366' {
-					return 'userlist complete'
-				}
-				'372', '375', '376' {
-					return chalk.dim('${trailing}')
-				}
-				'421', '422', '431', '432', '433', '436', '441', '442', '443', '451', '461', '462',
-				'463', '464', '465', '467', '471', '473', '475', '481', '482', '501', '502' {
-					return chalk.red('[${command}] ${trailing}')
-				}
-				else {
-					return chalk.dim('[${command}] ${trailing}')
-				}
-			}
-		}
-	}
-	// === WITHOUT COLOR ===
-	else {
-		if !command.is_int() {
-			match command {
-				'NOTICE' {
-					if nick.len > 0 {
-						return '-${cnick}- ${trailing}'
-					}
-					return '${trailing}'
-				}
-				'PRIVMSG' {
-					if trailing.starts_with('\x01ACTION ') && trailing.ends_with('\x01') {
-						action_text := trailing[8..trailing.len - 1]
-						return '* ${cnick} ${action_text}'
-					}
-					return '<${cnick}> ${trailing}'
-				}
-				'PING' {
-					irc_conn.tcp.write('PONG ${trailing}'.bytes())!
-					return ''
-				}
-				'PONG' {
-					if trailing.len > 0 {
-						return '${trailing} responded to ping'
-					}
-				}
-				'JOIN' {
-					return '${cnick} has joined ${if trailing.len > 0 {
-						trailing
-					} else {
-						target
-					}}'
-				}
-				'PART' {
-					if trailing.len > 0 {
-						return '${cnick} has left ${target} (${trailing})'
-					}
-					return '${cnick} has left ${target}'
-				}
-				'QUIT' {
-					if trailing.len > 0 {
-						return '${cnick} has quit (${trailing})'
-					}
-					return '${cnick} has quit'
-				}
-				'NICK' {
-					newnick := if trailing.len > 0 { trailing } else { target }
-					return '${cnick} is now known as ${newnick}'
-				}
-				'KICK' {
-					parts := line.split(' ')
-					if parts.len >= 4 {
-						victim := parts[3]
-						mut msg := '${cnick} kicked ${victim} from ${target}'
-						if trailing.len > 0 {
-							msg += ' (${trailing})'
-						}
-						return msg
-					}
-				}
-				'MODE' {
-					return '${cnick} changed mode: ${trailing}'
-				}
-				'TOPIC' {
-					return '${cnick} set topic for ${target}: ${trailing}'
-				}
-				else {
-					return '-!- [${command}] ${trailing}'
-				}
-			}
-		} else if command.is_int() {
-			match command {
-				'001', '002', '003', '004', '005' {
-					return trailing
-				}
-				'200', '201', '202', '203', '204', '205', '206', '207', '208', '209' {
-					return '[${command}] ${trailing}'
-				}
-				'251', '252', '253', '254', '255' {
-					return if irc_conn.color { chalk.dim('[${command}] ${trailing}') } else { '[${command}] ${trailing}' }
-				}
-				'301', '305', '306', '311', '312', '313', '317', '318', '319' {
-					return '[${command}] ${trailing}'
-				}
-				'322', '323', '324', '331', '332', '341', '346', '347', '348', '349' {
-					return '[${command}] ${trailing}'
-				}
-				'353' {
-					names := trailing.split_by_space()
-					mut ret := ''
-					for name in names {
-						ret += '[${name}] '
-					}
-					return 'Users: ${ret}'
-				}
-				'366' {
-					return 'userlist complete'
-				}
-				'372', '375', '376' {
-					return '${trailing}'
-				}
-				'421', '422', '431', '432', '433', '436', '441', '442', '443', '451', '461', '462',
-				'463', '464', '465', '467', '471', '473', '475', '481', '482', '501', '502' {
-					return '[${command}] ${trailing}'
-				}
-				else {
-					return '[${command}] ${trailing}'
-				}
-			}
-		}
-	}
+  match msg.command {
+    string {
+      match msg.command as string {
+        'NOTICE' {
+          if msg.nick.len > 0 {
+            msg.message = '-${msg.nick}- ${trailing}'
+            return
+          }
+          msg.message = '** notice ** ${trailing}'
+          return
+        }
+        'PRIVMSG' {
+          if trailing.starts_with('\x01ACTION ') && trailing.ends_with('\x01') {
+            action_text := trailing[8..trailing.len - 1]
+            msg.message = '* ${msg.nick} ${action_text}'
+            return
+          }
+          msg.message = '<${msg.nick}> ${trailing}'
+          return
+        }
+        'PING' {
+          irc_conn.tcp.write('PONG :${trailing}\r\n'.bytes())!
+          msg.message = ''
+          return
+        }
+        'PONG' {
+          if trailing.len > 0 {
+            msg.message = '${trailing} responded to ping'
+            return
+          }
+        }
+        'JOIN' {
+          msg.message = '${msg.nick} has joined ${if trailing.len > 0 {
+            trailing
+          } else {
+            msg.params[0]
+          }}'
+        }
+        'PART' {
+          if trailing.len > 0 {
+            msg.message = '${msg.nick} has left ${msg.params[0]} (${trailing})'
+            return
+          }
+          msg.message = '${msg.nick} has left ${msg.params[0]}'
+          return
+        }
+        'QUIT' {
+          if trailing.len > 0 {
+            msg.message = '${msg.nick} has quit (${trailing})'
+            return
+          }
+          msg.message = '${msg.nick} has quit'
+          return
+        }
+        'NICK' {
+          newnick := if trailing.len > 0 { msg.params.last() } else { msg.params[0] }
+          msg.message = '${msg.nick} is now known as ${newnick}'
+          return
+        }
+        // TODO: fix this
+        /* 'KICK' {
+          parts := line.split(' ')
+          if parts.len >= 4 {
+            victim := parts[3]
+            mut msg := '${msg.nick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(msg.params[0])}'
+            if trailing.len > 0 {
+              msg += ' (${trailing})'
+            }
+            return msg
+          }
+        }
+        */
+        'MODE' {
+          msg.message = '${msg.nick} changed mode: ${trailing}'
+          return
+        }
+        'TOPIC' {
+          msg.message = '${msg.nick} set topic for ${msg.params[0]}: ${trailing}'
+          return
+        }
+        else {
+          msg.message = '-!- [${msg.command}] ${trailing}'
+          return
+        }
+      }
+    }
+    int {
+      match msg.command as int {
+        001, 002, 003, 004, 005 {
+          msg.message = trailing
+          return
+        }
+        200, 201, 202, 203, 204, 205, 206, 207, 208, 209 {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+        251, 252, 253, 254, 255 {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+        301, 305, 306, 311, 312, 313, 317, 318, 319 {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+        322, 323, 324, 331, 332, 341, 346, 347, 348, 349 {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+        353 {
+          names := trailing.split_by_space()
+          mut ret := ''
+          for name in names {
+            ret += '[${name}] '
+          }
+          msg.message = 'Users: ${ret}'
+          return
+        }
+        366 {
+          msg.message = 'userlist complete'
+          return
+        }
+        372, 375, 376 {
+          msg.message = '${trailing}'
+          return
+        }
+        421, 422, 431, 432, 433, 436, 441, 442, 443, 451, 461, 462,
+        463, 464, 465, 467, 471, 473, 475, 481, 482, 501, 502 {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+        else {
+          msg.message = '[${msg.command}] ${trailing}'
+          return
+        }
+      }
+    }
+  }
 }
