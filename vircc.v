@@ -20,8 +20,6 @@ pub fn connect(ip string, port string, nick string) !IrcConn {
 		tcp:        conn
     state: IrcState{
       nick: nick
-    }
-    cfg: IrcCfg{
       is_running: true
     }
 	}

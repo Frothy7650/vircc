@@ -1,6 +1,6 @@
 Module {
 	name: 'vircc'
-	description: 'A minimal IRC client library'
+	description: 'A simple IRC client library'
 	version: '0.0.0'
 	license: 'MIT'
 	dependencies: [
