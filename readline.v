@@ -4,85 +4,13 @@ pub fn (mut irc_conn IrcConn) readline() !IrcMsg {
 	raw_line := irc_conn.tcp.read_line()
 	line := raw_line.trim_space()
 	if line.len == 0 {
-		return IrcMsg{}
+		return error('connection failed')
 	}
 
-  mut nick := ''
-  mut tags := map[string]string{}
-	mut prefix := ''
-	mut command := Command{}
-  mut params := []string{}
-
-  mut message := IrcMsg{}
-
-	if m := irc_conn.r.match_str(line, 0, 0) {
-    tags_str := m.get(1) or { '' }
-    prefix = m.get(2) or { '' }
-    command_str := m.get(3) or { '' }
-    params_str := m.get(4) or { '' }
-    trailing := m.get(5) or { '' }
-
-    // Parse tags
-    if tags_str != '' {
-      for tag in tags_str.split(';') {
-        parts := tag.split_nth('=', 2)
-
-        if parts.len == 2 {
-          tags[parts[0]] = parts[1]
-        } else {
-          tags[parts[0]] = ''
-        }
-      }
-    }
-
-    // Parse command
-    if command_str.len == 3 && command_str.bytes().all(it.is_digit()) {
-      command = command_str.int()
-    } else {
-      command = command_str
-    }
-
-    // Parse params
-    if params_str != '' {
-      params = params_str.split(' ')
-    }
-
-    // trailing is just final param
-    if trailing != '' {
-      params << trailing
-    }
-
-    // Extract nick from prefix
-    if prefix.contains('!') {
-      nick = prefix.split('!')[0]
-    } else {
-      nick = prefix
-    }
-
-    message = IrcMsg{
-      nick: nick
-      tags: tags
-      prefix: prefix
-      command: command
-      params: params
-      message: ''
-    }
-
-    if irc_conn.use_internal_formatting {
-      irc_conn.builtin_message_formatting(mut message)!
-    }
-
-    $if debug {
-      println(message)
-    }
-
-    return message
-	} else {
-		return error('failed to parse IRC message')
-	}
+  return parse(line, mut irc_conn)!
 }
 
-pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
+fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
   trailing := if msg.params.len > 0 {
     msg.params.last()
   } else { 
@@ -93,8 +21,8 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
     string {
       match msg.command as string {
         'NOTICE' {
-          if msg.nick.len > 0 {
-            msg.message = '-${msg.nick}- ${trailing}'
+          if msg.prefix.nickname.len > 0 {
+            msg.message = '-${msg.prefix.nickname}- ${trailing}'
             return
           }
           msg.message = '** notice ** ${trailing}'
@@ -103,10 +31,10 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
         'PRIVMSG' {
           if trailing.starts_with('\x01ACTION ') && trailing.ends_with('\x01') {
             action_text := trailing[8..trailing.len - 1]
-            msg.message = '* ${msg.nick} ${action_text}'
+            msg.message = '* ${msg.prefix.nickname} ${action_text}'
             return
           }
-          msg.message = '<${msg.nick}> ${trailing}'
+          msg.message = '<${msg.prefix.nickname}> ${trailing}'
           return
         }
         'PING' {
@@ -121,7 +49,7 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
           }
         }
         'JOIN' {
-          msg.message = '${msg.nick} has joined ${if trailing.len > 0 {
+          msg.message = '${msg.prefix.nickname} has joined ${if trailing.len > 0 {
             trailing
           } else {
             msg.params[0]
@@ -129,23 +57,23 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
         }
         'PART' {
           if trailing.len > 0 {
-            msg.message = '${msg.nick} has left ${msg.params[0]} (${trailing})'
+            msg.message = '${msg.prefix.nickname} has left ${msg.params[0]} (${trailing})'
             return
           }
-          msg.message = '${msg.nick} has left ${msg.params[0]}'
+          msg.message = '${msg.prefix.nickname} has left ${msg.params[0]}'
           return
         }
         'QUIT' {
           if trailing.len > 0 {
-            msg.message = '${msg.nick} has quit (${trailing})'
+            msg.message = '${msg.prefix.nickname} has quit (${trailing})'
             return
           }
-          msg.message = '${msg.nick} has quit'
+          msg.message = '${msg.prefix.nickname} has quit'
           return
         }
         'NICK' {
           newnick := if trailing.len > 0 { msg.params.last() } else { msg.params[0] }
-          msg.message = '${msg.nick} is now known as ${newnick}'
+          msg.message = '${msg.prefix.nickname} is now known as ${newnick}'
           return
         }
         // TODO: fix this
@@ -153,7 +81,7 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
           parts := line.split(' ')
           if parts.len >= 4 {
             victim := parts[3]
-            mut msg := '${msg.nick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(msg.params[0])}'
+            mut msg := '${msg.prefix.nickname} kicked ${chalk.cyan(victim)} from ${chalk.cyan(msg.params[0])}'
             if trailing.len > 0 {
               msg += ' (${trailing})'
             }
@@ -162,11 +90,11 @@ pub fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) ! {
         }
         */
         'MODE' {
-          msg.message = '${msg.nick} changed mode: ${trailing}'
+          msg.message = '${msg.prefix.nickname} changed mode: ${trailing}'
           return
         }
         'TOPIC' {
-          msg.message = '${msg.nick} set topic for ${msg.params[0]}: ${trailing}'
+          msg.message = '${msg.prefix.nickname} set topic for ${msg.params[0]}: ${trailing}'
           return
         }
         else {

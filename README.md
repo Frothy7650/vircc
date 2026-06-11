@@ -3,19 +3,34 @@ Simple IRC client library.
 
 ## Features
 ```
-conn.connect(ip string, port string, nick string) !IrcConn
-conn.login() !
-conn.writeline(input string) !
-conn.readline() !string
-conn.disconnect() !
+fn connect(ip string, port string, nick string) !IrcConn
 
-pub struct IrcConn {
+type Command = string | int
+struct IrcConn {
 pub mut:
-  tcp         net.TcpConn
-  nick        string
-  channel     string
-  is_running  bool
-  color       bool // Enable for ascii color support
+	tcp                     net.TcpConn
+	nick                    string
+	channel                 string
+	command                 string
+	is_running              bool
+	use_internal_formatting bool
+	r                       pcre.Regex
+}
+
+fn (mut irc_conn IrcConn) builtin_message_formatting(mut msg IrcMsg) !
+fn (mut irc_conn IrcConn) readline() !IrcMsg
+fn (mut irc_conn IrcConn) writeline(input string) !string
+
+struct IrcMsg {
+pub mut:
+	nick    string
+	tags    map[string]string
+	prefix  string
+	command Command
+	params  []string
+
+	// Buffer for builtin_message_formatting()
+	message string
 }
 ```
 
@@ -34,7 +49,7 @@ fn main()
   nick := os.input("Nick: ")
 
   mut conn := vircc.connect(ip, "6667", nick)!
-  conn.color = true
+  conn.use_internal_formatting = true
   conn.login()!
 
   // --- receiving messages ---
@@ -44,8 +59,8 @@ fn main()
 
   go fn [mut conn]() {
     for conn.is_running {
-      line := conn.readline() or { continue }
-      println(line)
+      msg := conn.readline() or { continue }.message
+      println(msg)
     }
   }()
 
