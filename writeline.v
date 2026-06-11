@@ -107,6 +107,13 @@ pub fn (mut irc_conn IrcConn) writeline(input string) !string {
 					irc_conn.tcp.write('MODE ${irc_conn.state.channel}\r\n'.bytes())!
 				}
 			}
+      'me' {
+        if parts.len > 1 {
+          action := parts[1..].join(' ')
+          irc_conn.state.command = 'PRIVMSG ${irc_conn.state.channel} :\x01ACTION ${action}\x01'
+          irc_conn.tcp.write('PRIVMSG ${irc_conn.state.channel} :\x01ACTION ${action}\x01\r\n'.bytes())!
+        }
+      }
 			'quit' {
 				irc_conn.state.command = 'QUIT :${parts[1..].join(' ')}'
 				irc_conn.tcp.write('QUIT :${parts[1..].join(' ')}\r\n'.bytes())!
