@@ -38,7 +38,8 @@ pub mut:
   message  string
 }
 
-struct Prefix {
+pub struct Prefix {
+pub:
   raw      string
   nickname string
   username string
@@ -46,7 +47,7 @@ struct Prefix {
   type     PrefixType
 }
 
-enum PrefixType {
+pub enum PrefixType {
   user
   server
 }
