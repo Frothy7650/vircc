@@ -151,11 +151,12 @@ pub fn parse(line string, mut irc_conn IrcConn) !IrcMsg {
     tags: tags
     prefix: prefix
     command: command or { panic('parser didn\'t provide a command') }
+    command_type: ident_command(command or { panic('parser didn\'t provide a command') })
     params: params
   }
 
   if irc_conn.cfg.use_internal_formatting {
-    irc_conn.builtin_message_formatting(mut message)!
+    builtin_message_formatting(mut message, mut irc_conn)!
   }
 
   return message
