@@ -161,3 +161,7 @@ pub fn parse(line string, mut irc_conn IrcConn) !IrcMsg {
 
   return message
 }
+
+pub fn (mut msg IrcMsg) format(mut irc_conn IrcConn) ! {
+  builtin_message_formatting(mut msg, mut irc_conn)!
+}
