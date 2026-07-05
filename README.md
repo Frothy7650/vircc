@@ -5,7 +5,7 @@ Simple IRC client library.
 > The main repo for this is [here](https://iceshrimp.dev/frothy7650/vircc.git), github is just a mirror
 
 > [!WARNING]
-> This has not been tested on Windows or MacOS, if you have any issues, open an issue, but I can't help with Mac
+> This has not been tested on MacOS, if you have any issues, open an issue, but I can't help with Mac
 
 ## Features
 ```
